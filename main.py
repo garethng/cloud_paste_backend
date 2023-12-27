@@ -15,7 +15,7 @@ def generate_uuid(value: str):
         return None
 
 dynamodb = boto3.resource('dynamodb')
-table = dynamodb['paste-clip-note']
+table = dynamodb.Table('paste-clip-note')
 
     
 
@@ -25,7 +25,7 @@ def query(userid):
         # 从 DynamoDB 获取数据
         print(userid)
         response = table.query(
-            KeyConditionExpression=boto3.dynamodb.conditions.Key('userid').eq('userid')
+            KeyConditionExpression=boto3.dynamodb.conditions.Key('userid').eq(userid)
         )
         print(response)
     except ClientError as e:
@@ -40,20 +40,22 @@ def query(userid):
         }
     else:
         try:
-            item_list = response['Item']
+            item_list = response['Items']
             clipboard = {}
             
             for item in item_list:
+                
                 note = item.get("note")
                 create_date = item.get("createdate")
                 note_id = item.get("noteid")
 
-                total_content = clipboard[create_date]
+                total_content = clipboard.get(create_date) if clipboard.get(create_date) else []
                 total_content.append({
                     "note_id": note_id,
                     "note": note
                 })
-                clipboard[item.get("datetime")] = total_content
+                print(create_date)
+                clipboard[create_date] = total_content
             
             print(clipboard)
             
@@ -74,31 +76,24 @@ def query(userid):
         			'Content-Type': 'application/json',
         			'Access-Control-Allow-Origin': '*'
         		},
-            'body': e
+            'body': json.dumps(e.response['Error']['Message'])
         }
         
-def set(userid, clipboard):
-    # 创建一个timezone对象
-    # tz = pytz.timezone('Asia/Shanghai')
+def set(userid, clipboard, index_date):
 
     current_date = datetime.now().strftime('%Y-%m-%dT%H:%M:%SZ')
-    index_date = datetime.now().strftime('%Y-%m-%d')
-    note_id = generate_uuid(f"{current_date}:{userid}:{clipboard}")
+    noteid = generate_uuid(f"{current_date}:{userid}:{clipboard}")
 
     try:
         # 更新 DynamoDB 数据
-        response = table.get_item(
-            Key={'userid': userid}
-        )
-        content = response['Item']['content']
+        
         new_note = {
             "userid": userid,
             "noteid": noteid,
             "note": clipboard,
             "createdate": index_date
         }
-        response = table.put_item(new_note)
-        # 找到新 clipboard 应该插入的位置
+        response = table.put_item(Item=new_note)
 
     except ClientError as e:
         print(e.response['Error']['Message'])
@@ -117,7 +112,7 @@ def set(userid, clipboard):
                 'Content-Type': 'application/json',
                 'Access-Control-Allow-Origin': '*'
             },
-        'body': json.dumps(note_id)
+        'body': json.dumps(noteid)
     }
 
 def deleteItem(userid, note_id):
@@ -162,6 +157,7 @@ def lambda_handler(event, context):
         return query(userid)
     if method == "set":
         clipboard = event['queryStringParameters']['clipboard'] 
+        index_date = event['queryStringParameters']['index_date']
         if not clipboard:
             return {
             'statusCode': 401,
@@ -174,7 +170,6 @@ def lambda_handler(event, context):
         else:
             return set(userid, clipboard)
     if method == "delete":
-        index_date = event["queryStringParameters"]["datetime"]
-        childIndex = event["queryStringParameters"]["index"]
-        return deleteItem(userid, index_date, childIndex)
+        note_id = event["queryStringParameters"]["noteid"]
+        return deleteItem(userid, note_id)
 

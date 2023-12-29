@@ -93,9 +93,10 @@ def set(userid, clipboard, index_date):
             "note": clipboard,
             "createdate": index_date
         }
+        print(new_note)
         response = table.put_item(Item=new_note)
-
-    except ClientError as e:
+        
+    except Exception as e:
         print(e.response['Error']['Message'])
         return {
             'statusCode': 400,
@@ -105,7 +106,7 @@ def set(userid, clipboard, index_date):
         		},
             'body': json.dumps(e.response['Error']['Message'])
         }
-
+    
     return {
         'statusCode': 200,
         'headers': {
@@ -118,6 +119,7 @@ def set(userid, clipboard, index_date):
 def deleteItem(userid, note_id):
     
     try:
+        print(note_id)
         response = table.delete_item(
             Key={
                 "userid": userid,
@@ -149,15 +151,17 @@ def lambda_handler(event, context):
     # 获取表名
     
     print(event)
+    body = json.loads(event["body"])
+    path = event["path"]
     # 从 API Gateway 事件中获取 userid
-    userid = event['queryStringParameters']['userid'] 
-    method = event['queryStringParameters']['method'] 
+    userid = body['userid'] 
+    # method = event['queryStringParameters']['method'] 
     
-    if method == "query":
+    if path == "/get_clipboard":
         return query(userid)
-    if method == "set":
-        clipboard = event['queryStringParameters']['clipboard'] 
-        index_date = event['queryStringParameters']['index_date']
+    if path == "/add_to_clipboard":
+        clipboard = body['clipboard'] 
+        index_date = body['index_date']
         if not clipboard:
             return {
             'statusCode': 401,
@@ -168,8 +172,9 @@ def lambda_handler(event, context):
             'body': "Not exist in params"
         }
         else:
-            return set(userid, clipboard)
-    if method == "delete":
-        note_id = event["queryStringParameters"]["noteid"]
+            return set(userid, clipboard, index_date)
+    if path == "/delete_from_clipboard":
+        note_id = body["noteid"]
         return deleteItem(userid, note_id)
+
 
